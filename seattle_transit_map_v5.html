@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seattle Transit Explorer</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f3; color: #1a1a1a; }
+  header { background: #fff; border-bottom: 1px solid #e0e0d8; padding: 14px 20px; display: flex; align-items: baseline; gap: 12px; }
+  header h1 { font-size: 18px; font-weight: 500; }
+  header p { font-size: 13px; color: #666; }
+  #app { display: grid; grid-template-columns: 1fr 400px; height: calc(100vh - 53px); }
+  #map { width: 100%; height: 100%; }
+  #sidebar { background: #fff; border-left: 1px solid #e0e0d8; overflow-y: auto; display: flex; flex-direction: column; }
+  #sidebar-inner { padding: 16px; flex: 1; }
+  .placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #999; text-align: center; padding: 2rem; gap: 10px; }
+  .placeholder svg { opacity: 0.3; }
+  .placeholder p { font-size: 14px; line-height: 1.6; }
+  .area-title { font-size: 17px; font-weight: 500; margin-bottom: 4px; }
+  .area-badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: #E1F5EE; color: #085041; margin-bottom: 8px; }
+  .area-desc { font-size: 13px; color: #555; margin-bottom: 10px; line-height: 1.5; }
+  .show-more-btn { display: block; width: 100%; padding: 8px; margin: 8px 0 4px; background: #f3f4f6; border: 1px solid #e0e0d8; border-radius: 6px; font-size: 12px; color: #374151; cursor: pointer; text-align: center; }
+  .show-more-btn:hover { background: #e5e7eb; }
+  .col-headers { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding-bottom: 6px; border-bottom: 1px solid #eee; margin-bottom: 8px; }
+  .col-header { font-size: 11px; color: #888; }
+  .employer-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 10px 0; border-bottom: 1px solid #f0f0ec; align-items: start; }
+  .employer-name { font-size: 13px; font-weight: 500; }
+  .employer-area { font-size: 11px; color: #888; margin-top: 1px; }
+  .employer-mode { font-size: 11px; color: #aaa; font-style: italic; margin-top: 2px; }
+  .metric-cell { background: #f7f7f4; border-radius: 8px; padding: 8px 10px; }
+  .metric-label { font-size: 11px; color: #888; margin-bottom: 2px; }
+  .metric-time { font-size: 15px; font-weight: 500; }
+  .metric-cost { font-size: 11px; color: #555; margin-top: 2px; }
+  .transit-time { color: #0F6E56; }
+  .car-time { color: #993C1D; }
+  .pill { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; margin-top: 3px; }
+  .pill-green { background: #E1F5EE; color: #085041; }
+  .pill-red { background: #FAECE7; color: #712B13; }
+  .footnote { font-size: 11px; color: #aaa; padding: 12px 16px; border-top: 1px solid #eee; line-height: 1.5; }
+  .legend { display: flex; gap: 14px; padding: 10px 16px; background: #fff; border-top: 1px solid #eee; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Seattle Transit Explorer</h1>
+  <p>Click a Sound Transit TOD project or suburban neighborhood (green) to compare transit vs. car commutes to top King County employers</p>
+</header>
+<div id="app">
+  <div id="map"></div>
+  <div id="sidebar">
+    <div id="sidebar-inner">
+      <div class="placeholder">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        <p>Click a <strong style="color:#1D9E75">green dot</strong> on the map to see how long it takes to reach top King County employers by transit vs. car — and what it costs.<br><br>Completed Sound Transit TOD projects and key suburban neighborhoods are shown.</p>
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#1D9E75;border:2px solid #085041"></div> Completed ST TOD</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#8B5CF6;border:2px solid #5B21B6"></div> Suburban neighborhood</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#D85A30;border:2px solid #712B13"></div> Top King Co. employer</div>
+    </div>
+  </div>
+</div>
+<div class="footnote">
+  Car cost = IRS mileage rate ($0.67/mi, 2024) × round-trip miles + estimated downtown parking ($25/day). &nbsp;|&nbsp; Transit = 2× peak ORCA fare. &nbsp;|&nbsp; Times are typical peak-hour estimates. &nbsp;|&nbsp; <strong>Employer data:</strong> WA ESD / Conference Board Help Wanted OnLine, April 2026. &nbsp;|&nbsp; Map © OpenStreetMap contributors.
+</div>
+
+<script>
+// ── RESIDENTIAL SITES ─────────────────────────────────────────────────────
+// No employer arrays here — those are built from COMMUTE_MATRIX below
+const TOD_SITES = [
+  { id:"capitol-hill",    name:"Capitol Hill Station TOD",         lat:47.6132, lng:-122.3200, kind:"tod",      region:"North King County",   url:"https://www.soundtransit.org/system-expansion/creating-vibrant-stations/transit-oriented-development/projects/capitol-hill-north", desc:"Multiple projects create a transit-oriented neighborhood at Capitol Hill. Includes Pride Place (LGBTQ-affirming senior affordable housing) and mixed-use development directly above and adjacent to the Link station." },
+  { id:"cedar-crossing",  name:"Cedar Crossing (Roosevelt)",       lat:47.6812, lng:-122.3163, kind:"tod",      region:"North King County",   url:"https://www.soundtransit.org/system-expansion/creating-vibrant-stations/transit-oriented-development/projects/cedar-crossing-tod", desc:"Affordable apartments with ground-floor retail steps from Roosevelt Link station. Cedar Crossing enhances the Roosevelt neighborhood with housing, community space, and direct rail access." },
+  { id:"colina",          name:"Colina (Beacon Hill)",             lat:47.5697, lng:-122.3114, kind:"tod",      region:"South King County",   url:"https://www.soundtransit.org/system-expansion/creating-vibrant-stations/transit-oriented-development/projects/beacon-hill", desc:"139 homes at Beacon Hill Link station, 20% affordable through the Multi-Family Tax Exemption Program. Strong Link access directly to downtown and Sea-Tac." },
+  { id:"mercy-othello",   name:"Mercy Othello Plaza",              lat:47.5354, lng:-122.2788, kind:"tod",      region:"South King County",   url:"https://www.soundtransit.org/system-expansion/creating-vibrant-stations/transit-oriented-development/projects/mercy-othello", desc:"Mixed-use facility across from Othello Link station in the Rainier Valley. Provides affordable housing, healthcare services, and community space — a key equity-focused project." },
+  { id:"pride-place",     name:"Pride Place (Capitol Hill)",       lat:47.6143, lng:-122.3207, kind:"tod",      region:"North King County",   url:"https://www.soundtransit.org/system-expansion/creating-vibrant-stations/transit-oriented-development/projects/pride-place", desc:"105 units of affordable, LGBTQ-affirming senior housing at Capitol Hill, directly served by the Capitol Hill Link station. Part of the broader Capitol Hill Station TOD." },
+  { id:"angle-lake",      name:"Connection Angle Lake",            lat:47.4445, lng:-122.2982, kind:"tod",      region:"South King County",   url:"https://www.soundtransit.org/system-expansion/creating-vibrant-stations/transit-oriented-development/projects/connection-angle-lake", desc:"Affordable housing directly adjacent to Angle Lake Link station in SeaTac. Serves residents with proximity to Sea-Tac Airport employment and regional transit connections." },
+  { id:"senior-city",     name:"Senior City (Federal Way)",        lat:47.3173, lng:-122.3128, kind:"tod",      region:"South King County",   url:"https://www.soundtransit.org/system-expansion/creating-vibrant-stations/transit-oriented-development/projects/senior-city", desc:"A transit-oriented community for seniors near the Federal Way Transit Center. Provides affordable senior housing with direct access to ST Express buses to Seattle and Tacoma." },
+];
+
+const SUBURBAN_SITES = [
+  { id:"bel-red",         name:"Bel-Red / Spring District (Bellevue)", lat:47.6205, lng:-122.1638, kind:"suburban", region:"East King County",   url:null, desc:"One of Bellevue's densest and fastest-growing apartment corridors along the 2 Line light rail. The Spring District is a walkable mixed-use neighborhood with direct Link access, chosen for its high multifamily density and proximity to Eastside tech employment." },
+  { id:"kent-downtown",   name:"Downtown Kent Residential Core",       lat:47.3809, lng:-122.2348, kind:"suburban", region:"South King County",  url:null, desc:"Dense older apartment stock concentrated around W Meeker St in downtown Kent — the most affordable and densely rented area in South King County. Walkable to Kent Sounder station and well served by Metro routes." },
+  { id:"everett-apts",    name:"Downtown Everett Apartment District",  lat:47.9790, lng:-122.2021, kind:"suburban", region:"Snohomish County",   url:null, desc:"The densest multifamily residential area in Snohomish County, concentrated around Rucker Ave and Everett Ave in downtown Everett. Located steps from Everett Sounder station and Swift BRT." },
+  { id:"renton-highlands",name:"Renton Highlands / NE 4th St Corridor",lat:47.4953, lng:-122.1733, kind:"suburban", region:"South King County",  url:null, desc:"The densest apartment concentration in Renton, stretching along NE 4th St into the Highlands. A major affordable housing area serving Boeing and Amazon Fulfillment workers." },
+];
+
+const ALL_SITES = [...TOD_SITES, ...SUBURBAN_SITES];
+
+// ── EMPLOYER DEFINITIONS ──────────────────────────────────────────────────
+// One entry per employer (for the sidebar label). Map pins defined separately.
+const EMPLOYER_DEFS = [
+  { name:"Amazon",                    area:"South Lake Union"        },
+  { name:"Providence",                area:"First Hill / Everett"    },
+  { name:"Swedish Health Services",   area:"First Hill"              },
+  { name:"Microsoft",                 area:"Redmond"                 },
+  { name:"Boeing",                    area:"Renton / Everett"        },
+  { name:"Apple",                     area:"Bellevue / SLU"          },
+  { name:"Kroger (QFC/Fred Meyer)",   area:"Multiple locations"      },
+  { name:"King County Admin",         area:"Downtown Seattle"        },
+  { name:"Turing",                    area:"Downtown Seattle"        },
+  { name:"University of Washington",  area:"U District"              },
+  { name:"Fred Hutchinson Cancer Ctr",area:"South Lake Union"        },
+  { name:"Seattle Children's Hospital",area:"Laurelhurst"            },
+  { name:"Google",                    area:"South Lake Union / Kirkland" },
+  { name:"Allied Universal",          area:"Citywide / SeaTac"       },
+  { name:"EvergreenHealth",           area:"Kirkland"                },
+  { name:"Blue Origin",               area:"Kent"                    },
+  { name:"Albertsons",                area:"Multiple locations"      },
+  { name:"MultiCare (Tacoma)",        area:"Tacoma / Auburn"         },
+  { name:"Marriott International",    area:"Downtown / SeaTac"       },
+  { name:"Quality Food Centers (QFC)",area:"Multiple locations"      },
+];
+
+// ── COMMUTE MATRIX ────────────────────────────────────────────────────────
+// Keys are siteId, then employer name (matching EMPLOYER_DEFS).
+// Values: { transitMin, transitFare, transitMode, carMin, carMilesRound }
+// All times are typical peak-hour estimates.
+const COMMUTE_MATRIX = {
+  "capitol-hill": {
+    "Amazon":                    { transitMin:12, transitFare:2.75, transitMode:"Link → walk",          carMin:10, carMilesRound:4  },
+    "Providence":                { transitMin:8,  transitFare:2.75, transitMode:"Walk (~10 min)",        carMin:7,  carMilesRound:2  },
+    "Swedish Health Services":   { transitMin:8,  transitFare:2.75, transitMode:"Walk (~10 min)",        carMin:7,  carMilesRound:2  },
+    "Microsoft":                 { transitMin:55, transitFare:3.25, transitMode:"Link → 545 express",   carMin:28, carMilesRound:24 },
+    "Boeing":                    { transitMin:45, transitFare:2.75, transitMode:"Link → bus 101",        carMin:25, carMilesRound:22 },
+    "Apple":                     { transitMin:48, transitFare:3.00, transitMode:"Link → bus",            carMin:26, carMilesRound:22 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:6,  transitFare:2.75, transitMode:"Walk (Capitol Hill QFC)",carMin:5, carMilesRound:1  },
+    "King County Admin":         { transitMin:10, transitFare:2.75, transitMode:"Link direct",           carMin:10, carMilesRound:3  },
+    "Turing":                    { transitMin:10, transitFare:2.75, transitMode:"Link direct",           carMin:10, carMilesRound:3  },
+    "University of Washington":  { transitMin:10, transitFare:2.75, transitMode:"Link direct",           carMin:12, carMilesRound:4  },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:14, transitFare:2.75, transitMode:"Link → walk",          carMin:10, carMilesRound:4  },
+    "Seattle Children's Hospital":{ transitMin:22,transitFare:2.75, transitMode:"Link → bus 48",        carMin:14, carMilesRound:5  },
+    "Google":                    { transitMin:13, transitFare:2.75, transitMode:"Link → walk",          carMin:10, carMilesRound:4  },
+    "Allied Universal":          { transitMin:10, transitFare:2.75, transitMode:"Link direct",           carMin:10, carMilesRound:3  },
+    "EvergreenHealth":           { transitMin:52, transitFare:3.25, transitMode:"Link → bus 255",        carMin:28, carMilesRound:22 },
+    "Blue Origin":               { transitMin:42, transitFare:2.75, transitMode:"Link → bus",            carMin:24, carMilesRound:20 },
+    "Albertsons":                { transitMin:8,  transitFare:2.75, transitMode:"Walk (Broadway)",       carMin:5,  carMilesRound:1  },
+    "MultiCare (Tacoma)":        { transitMin:80, transitFare:4.00, transitMode:"Link → Sounder",        carMin:45, carMilesRound:42 },
+    "Marriott International":    { transitMin:15, transitFare:2.75, transitMode:"Link → walk",          carMin:12, carMilesRound:5  },
+    "Quality Food Centers (QFC)":{ transitMin:6,  transitFare:2.75, transitMode:"Walk (Cap Hill QFC)",  carMin:5,  carMilesRound:1  },
+  },
+  "cedar-crossing": {
+    "Amazon":                    { transitMin:22, transitFare:2.75, transitMode:"Link → walk",          carMin:18, carMilesRound:10 },
+    "Providence":                { transitMin:22, transitFare:2.75, transitMode:"Link → bus",            carMin:16, carMilesRound:8  },
+    "Swedish Health Services":   { transitMin:20, transitFare:2.75, transitMode:"Link → bus",            carMin:16, carMilesRound:8  },
+    "Microsoft":                 { transitMin:60, transitFare:3.25, transitMode:"Link → 545 express",   carMin:30, carMilesRound:24 },
+    "Boeing":                    { transitMin:52, transitFare:3.00, transitMode:"Link → bus 101",        carMin:28, carMilesRound:24 },
+    "Apple":                     { transitMin:55, transitFare:3.25, transitMode:"Link → bus",            carMin:30, carMilesRound:24 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:10, transitFare:2.75, transitMode:"Bus or walk",           carMin:8,  carMilesRound:3  },
+    "King County Admin":         { transitMin:20, transitFare:2.75, transitMode:"Link direct",           carMin:16, carMilesRound:9  },
+    "Turing":                    { transitMin:20, transitFare:2.75, transitMode:"Link direct",           carMin:16, carMilesRound:9  },
+    "University of Washington":  { transitMin:6,  transitFare:2.75, transitMode:"Link direct (1 stop)", carMin:8,  carMilesRound:3  },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:24, transitFare:2.75, transitMode:"Link → walk",          carMin:18, carMilesRound:10 },
+    "Seattle Children's Hospital":{ transitMin:22,transitFare:2.75, transitMode:"Link → bus 65",        carMin:14, carMilesRound:6  },
+    "Google":                    { transitMin:24, transitFare:2.75, transitMode:"Link → walk",          carMin:18, carMilesRound:10 },
+    "Allied Universal":          { transitMin:20, transitFare:2.75, transitMode:"Link direct",           carMin:16, carMilesRound:9  },
+    "EvergreenHealth":           { transitMin:55, transitFare:3.25, transitMode:"Link → bus 255",        carMin:30, carMilesRound:22 },
+    "Blue Origin":               { transitMin:50, transitFare:3.00, transitMode:"Link → bus",            carMin:28, carMilesRound:22 },
+    "Albertsons":                { transitMin:12, transitFare:2.75, transitMode:"Bus or walk",           carMin:10, carMilesRound:4  },
+    "MultiCare (Tacoma)":        { transitMin:70, transitFare:4.00, transitMode:"Link → Sounder",        carMin:40, carMilesRound:38 },
+    "Marriott International":    { transitMin:22, transitFare:2.75, transitMode:"Link direct",           carMin:16, carMilesRound:9  },
+    "Quality Food Centers (QFC)":{ transitMin:10, transitFare:2.75, transitMode:"Bus or walk",           carMin:8,  carMilesRound:3  },
+  },
+  "colina": {
+    "Amazon":                    { transitMin:22, transitFare:2.75, transitMode:"Link direct",           carMin:14, carMilesRound:10 },
+    "Providence":                { transitMin:20, transitFare:2.75, transitMode:"Link → bus 60",         carMin:14, carMilesRound:7  },
+    "Swedish Health Services":   { transitMin:18, transitFare:2.75, transitMode:"Link → bus 60",         carMin:14, carMilesRound:7  },
+    "Microsoft":                 { transitMin:62, transitFare:3.25, transitMode:"Link → 545",            carMin:32, carMilesRound:28 },
+    "Boeing":                    { transitMin:28, transitFare:2.75, transitMode:"Link → bus 101",        carMin:16, carMilesRound:14 },
+    "Apple":                     { transitMin:60, transitFare:3.25, transitMode:"Link → bus",            carMin:30, carMilesRound:26 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:10, transitFare:2.75, transitMode:"Bus or walk",           carMin:7,  carMilesRound:3  },
+    "King County Admin":         { transitMin:16, transitFare:2.75, transitMode:"Link direct",           carMin:12, carMilesRound:6  },
+    "Turing":                    { transitMin:18, transitFare:2.75, transitMode:"Link direct",           carMin:12, carMilesRound:6  },
+    "University of Washington":  { transitMin:25, transitFare:2.75, transitMode:"Link direct",           carMin:16, carMilesRound:10 },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:28, transitFare:2.75, transitMode:"Link direct",           carMin:18, carMilesRound:11 },
+    "Seattle Children's Hospital":{ transitMin:32,transitFare:2.75, transitMode:"Link → bus",            carMin:20, carMilesRound:12 },
+    "Google":                    { transitMin:28, transitFare:2.75, transitMode:"Link direct",           carMin:18, carMilesRound:11 },
+    "Allied Universal":          { transitMin:16, transitFare:2.75, transitMode:"Link direct",           carMin:12, carMilesRound:6  },
+    "EvergreenHealth":           { transitMin:62, transitFare:3.25, transitMode:"Link → bus 255",        carMin:32, carMilesRound:26 },
+    "Blue Origin":               { transitMin:30, transitFare:2.75, transitMode:"Link → bus",            carMin:18, carMilesRound:14 },
+    "Albertsons":                { transitMin:6,  transitFare:2.75, transitMode:"Walk (Beacon Hill)",    carMin:5,  carMilesRound:2  },
+    "MultiCare (Tacoma)":        { transitMin:65, transitFare:3.75, transitMode:"Link → Sounder",        carMin:38, carMilesRound:36 },
+    "Marriott International":    { transitMin:18, transitFare:2.75, transitMode:"Link direct",           carMin:14, carMilesRound:7  },
+    "Quality Food Centers (QFC)":{ transitMin:10, transitFare:2.75, transitMode:"Bus",                   carMin:7,  carMilesRound:3  },
+  },
+  "mercy-othello": {
+    "Amazon":                    { transitMin:32, transitFare:2.75, transitMode:"Link direct",           carMin:20, carMilesRound:16 },
+    "Providence":                { transitMin:28, transitFare:2.75, transitMode:"Link → bus",            carMin:16, carMilesRound:10 },
+    "Swedish Health Services":   { transitMin:26, transitFare:2.75, transitMode:"Link → bus 60",         carMin:16, carMilesRound:10 },
+    "Microsoft":                 { transitMin:70, transitFare:3.50, transitMode:"Link → 545",            carMin:36, carMilesRound:32 },
+    "Boeing":                    { transitMin:35, transitFare:2.75, transitMode:"Link → bus 101",        carMin:20, carMilesRound:16 },
+    "Apple":                     { transitMin:68, transitFare:3.50, transitMode:"Link → bus",            carMin:34, carMilesRound:30 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:8,  transitFare:2.75, transitMode:"Walk or Link 1 stop",  carMin:6,  carMilesRound:2  },
+    "King County Admin":         { transitMin:22, transitFare:2.75, transitMode:"Link direct",           carMin:18, carMilesRound:12 },
+    "Turing":                    { transitMin:22, transitFare:2.75, transitMode:"Link direct",           carMin:18, carMilesRound:12 },
+    "University of Washington":  { transitMin:35, transitFare:2.75, transitMode:"Link direct",           carMin:20, carMilesRound:12 },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:36, transitFare:2.75, transitMode:"Link direct",           carMin:22, carMilesRound:14 },
+    "Seattle Children's Hospital":{ transitMin:38,transitFare:2.75, transitMode:"Link → bus",            carMin:24, carMilesRound:14 },
+    "Google":                    { transitMin:36, transitFare:2.75, transitMode:"Link direct",           carMin:22, carMilesRound:14 },
+    "Allied Universal":          { transitMin:22, transitFare:2.75, transitMode:"Link direct",           carMin:18, carMilesRound:12 },
+    "EvergreenHealth":           { transitMin:70, transitFare:3.50, transitMode:"Link → bus 255",        carMin:36, carMilesRound:30 },
+    "Blue Origin":               { transitMin:28, transitFare:2.75, transitMode:"Link → bus",            carMin:16, carMilesRound:12 },
+    "Albertsons":                { transitMin:6,  transitFare:2.75, transitMode:"Walk (Rainier Valley)", carMin:5,  carMilesRound:2  },
+    "MultiCare (Tacoma)":        { transitMin:58, transitFare:3.50, transitMode:"Link → Sounder",        carMin:32, carMilesRound:30 },
+    "Marriott International":    { transitMin:24, transitFare:2.75, transitMode:"Link direct",           carMin:18, carMilesRound:12 },
+    "Quality Food Centers (QFC)":{ transitMin:8,  transitFare:2.75, transitMode:"Walk or Link",          carMin:6,  carMilesRound:2  },
+  },
+  "pride-place": {
+    "Amazon":                    { transitMin:12, transitFare:2.75, transitMode:"Link → walk",          carMin:10, carMilesRound:4  },
+    "Providence":                { transitMin:7,  transitFare:2.75, transitMode:"Walk (~8 min)",         carMin:6,  carMilesRound:2  },
+    "Swedish Health Services":   { transitMin:7,  transitFare:2.75, transitMode:"Walk (~8 min)",         carMin:6,  carMilesRound:2  },
+    "Microsoft":                 { transitMin:55, transitFare:3.25, transitMode:"Link → 545 express",   carMin:28, carMilesRound:24 },
+    "Boeing":                    { transitMin:45, transitFare:2.75, transitMode:"Link → bus 101",        carMin:25, carMilesRound:22 },
+    "Apple":                     { transitMin:48, transitFare:3.00, transitMode:"Link → bus",            carMin:26, carMilesRound:22 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:6,  transitFare:2.75, transitMode:"Walk (Cap Hill QFC)",  carMin:5,  carMilesRound:1  },
+    "King County Admin":         { transitMin:10, transitFare:2.75, transitMode:"Link direct",           carMin:10, carMilesRound:3  },
+    "Turing":                    { transitMin:10, transitFare:2.75, transitMode:"Link direct",           carMin:10, carMilesRound:3  },
+    "University of Washington":  { transitMin:10, transitFare:2.75, transitMode:"Link direct",           carMin:12, carMilesRound:4  },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:14, transitFare:2.75, transitMode:"Link → walk",          carMin:10, carMilesRound:4  },
+    "Seattle Children's Hospital":{ transitMin:22,transitFare:2.75, transitMode:"Link → bus 48",        carMin:14, carMilesRound:5  },
+    "Google":                    { transitMin:13, transitFare:2.75, transitMode:"Link → walk",          carMin:10, carMilesRound:4  },
+    "Allied Universal":          { transitMin:10, transitFare:2.75, transitMode:"Link direct",           carMin:10, carMilesRound:3  },
+    "EvergreenHealth":           { transitMin:52, transitFare:3.25, transitMode:"Link → bus 255",        carMin:28, carMilesRound:22 },
+    "Blue Origin":               { transitMin:42, transitFare:2.75, transitMode:"Link → bus",            carMin:24, carMilesRound:20 },
+    "Albertsons":                { transitMin:8,  transitFare:2.75, transitMode:"Walk (Broadway)",       carMin:5,  carMilesRound:1  },
+    "MultiCare (Tacoma)":        { transitMin:80, transitFare:4.00, transitMode:"Link → Sounder",        carMin:45, carMilesRound:42 },
+    "Marriott International":    { transitMin:15, transitFare:2.75, transitMode:"Link → walk",          carMin:12, carMilesRound:5  },
+    "Quality Food Centers (QFC)":{ transitMin:6,  transitFare:2.75, transitMode:"Walk (Cap Hill QFC)",  carMin:5,  carMilesRound:1  },
+  },
+  "angle-lake": {
+    "Amazon":                    { transitMin:48, transitFare:3.25, transitMode:"Link direct",           carMin:28, carMilesRound:28 },
+    "Providence":                { transitMin:35, transitFare:3.00, transitMode:"Link → bus",            carMin:20, carMilesRound:18 },
+    "Swedish Health Services":   { transitMin:38, transitFare:3.00, transitMode:"Link → bus",            carMin:22, carMilesRound:20 },
+    "Microsoft":                 { transitMin:70, transitFare:3.75, transitMode:"Link → 545 express",   carMin:38, carMilesRound:36 },
+    "Boeing":                    { transitMin:32, transitFare:3.00, transitMode:"Link → bus",            carMin:18, carMilesRound:18 },
+    "Apple":                     { transitMin:68, transitFare:3.75, transitMode:"Link → bus",            carMin:36, carMilesRound:34 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:12, transitFare:2.75, transitMode:"Bus",                   carMin:8,  carMilesRound:4  },
+    "King County Admin":         { transitMin:40, transitFare:3.00, transitMode:"Link direct",           carMin:25, carMilesRound:22 },
+    "Turing":                    { transitMin:40, transitFare:3.00, transitMode:"Link direct",           carMin:25, carMilesRound:22 },
+    "University of Washington":  { transitMin:50, transitFare:3.25, transitMode:"Link direct",           carMin:30, carMilesRound:26 },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:50, transitFare:3.25, transitMode:"Link direct",           carMin:30, carMilesRound:28 },
+    "Seattle Children's Hospital":{ transitMin:55,transitFare:3.25, transitMode:"Link → bus",            carMin:32, carMilesRound:28 },
+    "Google":                    { transitMin:50, transitFare:3.25, transitMode:"Link direct",           carMin:30, carMilesRound:28 },
+    "Allied Universal":          { transitMin:8,  transitFare:2.75, transitMode:"Link 1 stop or walk",  carMin:6,  carMilesRound:3  },
+    "EvergreenHealth":           { transitMin:72, transitFare:3.75, transitMode:"Link → bus 255",        carMin:40, carMilesRound:36 },
+    "Blue Origin":               { transitMin:28, transitFare:2.75, transitMode:"Link → bus",            carMin:16, carMilesRound:12 },
+    "Albertsons":                { transitMin:10, transitFare:2.75, transitMode:"Bus or walk",           carMin:8,  carMilesRound:4  },
+    "MultiCare (Tacoma)":        { transitMin:45, transitFare:3.50, transitMode:"Link → Sounder",        carMin:25, carMilesRound:24 },
+    "Marriott International":    { transitMin:8,  transitFare:2.75, transitMode:"Link 1 stop or walk",  carMin:6,  carMilesRound:3  },
+    "Quality Food Centers (QFC)":{ transitMin:12, transitFare:2.75, transitMode:"Bus",                   carMin:8,  carMilesRound:4  },
+  },
+  "senior-city": {
+    "Amazon":                    { transitMin:65, transitFare:4.00, transitMode:"ST Express 577 → Link", carMin:38, carMilesRound:36 },
+    "Providence":                { transitMin:50, transitFare:3.50, transitMode:"ST Express → bus",      carMin:30, carMilesRound:28 },
+    "Swedish Health Services":   { transitMin:52, transitFare:3.50, transitMode:"ST Express → bus",      carMin:32, carMilesRound:30 },
+    "Microsoft":                 { transitMin:90, transitFare:4.50, transitMode:"ST 577 → Link → 545",  carMin:48, carMilesRound:46 },
+    "Boeing":                    { transitMin:40, transitFare:3.25, transitMode:"ST Express → bus",      carMin:25, carMilesRound:24 },
+    "Apple":                     { transitMin:88, transitFare:4.50, transitMode:"ST 577 → Link → bus",  carMin:46, carMilesRound:44 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:12, transitFare:2.75, transitMode:"Local bus or walk",    carMin:8,  carMilesRound:4  },
+    "King County Admin":         { transitMin:60, transitFare:4.00, transitMode:"ST Express 577",        carMin:35, carMilesRound:32 },
+    "Turing":                    { transitMin:60, transitFare:4.00, transitMode:"ST Express 577",        carMin:35, carMilesRound:32 },
+    "University of Washington":  { transitMin:75, transitFare:4.25, transitMode:"ST Express 577 → Link",carMin:42, carMilesRound:38 },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:68, transitFare:4.00, transitMode:"ST Express → walk",    carMin:40, carMilesRound:36 },
+    "Seattle Children's Hospital":{ transitMin:78,transitFare:4.25, transitMode:"ST Express → bus",     carMin:44, carMilesRound:40 },
+    "Google":                    { transitMin:68, transitFare:4.00, transitMode:"ST Express → walk",    carMin:40, carMilesRound:36 },
+    "Allied Universal":          { transitMin:20, transitFare:3.00, transitMode:"ST Express",            carMin:14, carMilesRound:10 },
+    "EvergreenHealth":           { transitMin:95, transitFare:4.50, transitMode:"ST 577 → Link → bus",  carMin:52, carMilesRound:48 },
+    "Blue Origin":               { transitMin:35, transitFare:3.25, transitMode:"ST Express → bus",      carMin:20, carMilesRound:18 },
+    "Albertsons":                { transitMin:10, transitFare:2.75, transitMode:"Local bus or walk",    carMin:8,  carMilesRound:4  },
+    "MultiCare (Tacoma)":        { transitMin:30, transitFare:3.50, transitMode:"ST Express 577/578",   carMin:20, carMilesRound:18 },
+    "Marriott International":    { transitMin:38, transitFare:3.25, transitMode:"ST Express → Link",    carMin:22, carMilesRound:20 },
+    "Quality Food Centers (QFC)":{ transitMin:12, transitFare:2.75, transitMode:"Local bus",             carMin:8,  carMilesRound:4  },
+  },
+  "bel-red": {
+    "Amazon":                    { transitMin:38, transitFare:3.00, transitMode:"Link 2 Line → 1 Line", carMin:24, carMilesRound:22 },
+    "Providence":                { transitMin:18, transitFare:2.75, transitMode:"Link 2 Line",          carMin:12, carMilesRound:8  },
+    "Swedish Health Services":   { transitMin:20, transitFare:2.75, transitMode:"Link 2 Line → bus",    carMin:14, carMilesRound:10 },
+    "Microsoft":                 { transitMin:10, transitFare:2.75, transitMode:"Link 2 Line direct",   carMin:8,  carMilesRound:5  },
+    "Boeing":                    { transitMin:35, transitFare:3.00, transitMode:"Link → bus",            carMin:20, carMilesRound:16 },
+    "Apple":                     { transitMin:12, transitFare:2.75, transitMode:"Link 2 Line",          carMin:8,  carMilesRound:5  },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:14, transitFare:2.75, transitMode:"Bus",                   carMin:10, carMilesRound:5  },
+    "King County Admin":         { transitMin:35, transitFare:3.00, transitMode:"Link 2 Line → 1 Line", carMin:22, carMilesRound:18 },
+    "Turing":                    { transitMin:35, transitFare:3.00, transitMode:"Link 2 Line → 1 Line", carMin:22, carMilesRound:18 },
+    "University of Washington":  { transitMin:42, transitFare:3.00, transitMode:"Link 2 Line → 1 Line", carMin:26, carMilesRound:20 },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:40, transitFare:3.00, transitMode:"Link 2 Line → 1 Line", carMin:26, carMilesRound:22 },
+    "Seattle Children's Hospital":{ transitMin:50,transitFare:3.25, transitMode:"Link → bus",            carMin:28, carMilesRound:22 },
+    "Google":                    { transitMin:20, transitFare:2.75, transitMode:"Link → bus 255",        carMin:12, carMilesRound:8  },
+    "Allied Universal":          { transitMin:35, transitFare:3.00, transitMode:"Link → bus",            carMin:22, carMilesRound:18 },
+    "EvergreenHealth":           { transitMin:22, transitFare:2.75, transitMode:"Link → bus 255",        carMin:14, carMilesRound:9  },
+    "Blue Origin":               { transitMin:30, transitFare:2.75, transitMode:"Link → bus",            carMin:18, carMilesRound:14 },
+    "Albertsons":                { transitMin:15, transitFare:2.75, transitMode:"Bus",                   carMin:10, carMilesRound:6  },
+    "MultiCare (Tacoma)":        { transitMin:80, transitFare:4.25, transitMode:"Link → Sounder",        carMin:48, carMilesRound:44 },
+    "Marriott International":    { transitMin:22, transitFare:2.75, transitMode:"Link 2 Line",          carMin:14, carMilesRound:10 },
+    "Quality Food Centers (QFC)":{ transitMin:14, transitFare:2.75, transitMode:"Bus",                   carMin:10, carMilesRound:5  },
+  },
+  "kent-downtown": {
+    "Amazon":                    { transitMin:55, transitFare:3.50, transitMode:"Sounder → Link",        carMin:35, carMilesRound:32 },
+    "Providence":                { transitMin:28, transitFare:2.75, transitMode:"Bus or Sounder → bus", carMin:16, carMilesRound:12 },
+    "Swedish Health Services":   { transitMin:48, transitFare:3.25, transitMode:"Sounder → Link → bus", carMin:30, carMilesRound:26 },
+    "Microsoft":                 { transitMin:75, transitFare:3.75, transitMode:"Sounder → Link → 545", carMin:42, carMilesRound:40 },
+    "Boeing":                    { transitMin:18, transitFare:2.75, transitMode:"Sounder → bus 101",    carMin:14, carMilesRound:10 },
+    "Apple":                     { transitMin:72, transitFare:3.75, transitMode:"Sounder → Link → bus", carMin:40, carMilesRound:38 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:10, transitFare:2.75, transitMode:"Bus or walk",           carMin:7,  carMilesRound:3  },
+    "King County Admin":         { transitMin:50, transitFare:3.50, transitMode:"Sounder direct",        carMin:32, carMilesRound:28 },
+    "Turing":                    { transitMin:50, transitFare:3.50, transitMode:"Sounder direct",        carMin:32, carMilesRound:28 },
+    "University of Washington":  { transitMin:60, transitFare:3.50, transitMode:"Sounder → Link",        carMin:36, carMilesRound:32 },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:58, transitFare:3.50, transitMode:"Sounder → Link → walk",carMin:36, carMilesRound:32 },
+    "Seattle Children's Hospital":{ transitMin:65,transitFare:3.50, transitMode:"Sounder → Link → bus", carMin:38, carMilesRound:32 },
+    "Google":                    { transitMin:58, transitFare:3.50, transitMode:"Sounder → Link → walk",carMin:36, carMilesRound:32 },
+    "Allied Universal":          { transitMin:12, transitFare:2.75, transitMode:"Bus",                   carMin:8,  carMilesRound:5  },
+    "EvergreenHealth":           { transitMin:65, transitFare:3.75, transitMode:"Sounder → Link → bus", carMin:38, carMilesRound:34 },
+    "Blue Origin":               { transitMin:10, transitFare:2.75, transitMode:"Bus or walk",           carMin:7,  carMilesRound:4  },
+    "Albertsons":                { transitMin:8,  transitFare:2.75, transitMode:"Walk",                  carMin:6,  carMilesRound:3  },
+    "MultiCare (Tacoma)":        { transitMin:22, transitFare:2.75, transitMode:"Sounder to Auburn/Tacoma",carMin:15,carMilesRound:12},
+    "Marriott International":    { transitMin:28, transitFare:3.00, transitMode:"Sounder → Link",        carMin:18, carMilesRound:14 },
+    "Quality Food Centers (QFC)":{ transitMin:10, transitFare:2.75, transitMode:"Bus or walk",           carMin:7,  carMilesRound:3  },
+  },
+  "everett-apts": {
+    "Amazon":                    { transitMin:52, transitFare:3.50, transitMode:"Sounder direct",        carMin:35, carMilesRound:34 },
+    "Providence":                { transitMin:12, transitFare:2.75, transitMode:"Bus or walk",           carMin:8,  carMilesRound:5  },
+    "Swedish Health Services":   { transitMin:50, transitFare:3.50, transitMode:"Sounder → Link → bus", carMin:35, carMilesRound:32 },
+    "Microsoft":                 { transitMin:78, transitFare:3.75, transitMode:"Sounder → Link → 545", carMin:45, carMilesRound:44 },
+    "Boeing":                    { transitMin:18, transitFare:2.75, transitMode:"Community Transit bus", carMin:12, carMilesRound:10 },
+    "Apple":                     { transitMin:76, transitFare:3.75, transitMode:"Sounder → Link → bus", carMin:45, carMilesRound:42 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:10, transitFare:2.75, transitMode:"Walk or bus",           carMin:7,  carMilesRound:3  },
+    "King County Admin":         { transitMin:48, transitFare:3.50, transitMode:"Sounder direct",        carMin:32, carMilesRound:30 },
+    "Turing":                    { transitMin:48, transitFare:3.50, transitMode:"Sounder direct",        carMin:32, carMilesRound:30 },
+    "University of Washington":  { transitMin:55, transitFare:3.50, transitMode:"Sounder → Link",        carMin:38, carMilesRound:36 },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:55, transitFare:3.50, transitMode:"Sounder → Link → walk",carMin:38, carMilesRound:36 },
+    "Seattle Children's Hospital":{ transitMin:62,transitFare:3.50, transitMode:"Sounder → Link → bus", carMin:40, carMilesRound:36 },
+    "Google":                    { transitMin:55, transitFare:3.50, transitMode:"Sounder → Link → walk",carMin:38, carMilesRound:36 },
+    "Allied Universal":          { transitMin:15, transitFare:2.75, transitMode:"Local bus",             carMin:10, carMilesRound:6  },
+    "EvergreenHealth":           { transitMin:65, transitFare:3.75, transitMode:"Sounder → Link → bus", carMin:40, carMilesRound:38 },
+    "Blue Origin":               { transitMin:62, transitFare:3.50, transitMode:"Sounder → Link → bus", carMin:38, carMilesRound:36 },
+    "Albertsons":                { transitMin:8,  transitFare:2.75, transitMode:"Walk",                  carMin:6,  carMilesRound:3  },
+    "MultiCare (Tacoma)":        { transitMin:90, transitFare:4.50, transitMode:"Sounder → Sounder",     carMin:55, carMilesRound:52 },
+    "Marriott International":    { transitMin:20, transitFare:2.75, transitMode:"Local bus",             carMin:14, carMilesRound:8  },
+    "Quality Food Centers (QFC)":{ transitMin:10, transitFare:2.75, transitMode:"Walk or bus",           carMin:7,  carMilesRound:3  },
+  },
+  "renton-highlands": {
+    "Amazon":                    { transitMin:50, transitFare:3.25, transitMode:"Metro → Link",          carMin:28, carMilesRound:24 },
+    "Providence":                { transitMin:12, transitFare:2.75, transitMode:"Bus",                   carMin:8,  carMilesRound:5  },
+    "Swedish Health Services":   { transitMin:48, transitFare:3.25, transitMode:"Metro → Link → bus",   carMin:28, carMilesRound:22 },
+    "Microsoft":                 { transitMin:40, transitFare:3.00, transitMode:"Metro bus 566 direct",  carMin:22, carMilesRound:18 },
+    "Boeing":                    { transitMin:14, transitFare:2.75, transitMode:"Metro bus 105/169",     carMin:8,  carMilesRound:6  },
+    "Apple":                     { transitMin:35, transitFare:3.00, transitMode:"Metro bus",             carMin:20, carMilesRound:16 },
+    "Kroger (QFC/Fred Meyer)":   { transitMin:10, transitFare:2.75, transitMode:"Bus",                   carMin:7,  carMilesRound:4  },
+    "King County Admin":         { transitMin:45, transitFare:3.25, transitMode:"Metro → Link",          carMin:26, carMilesRound:22 },
+    "Turing":                    { transitMin:45, transitFare:3.25, transitMode:"Metro → Link",          carMin:26, carMilesRound:22 },
+    "University of Washington":  { transitMin:55, transitFare:3.25, transitMode:"Metro → Link",          carMin:30, carMilesRound:24 },
+    "Fred Hutchinson Cancer Ctr":{ transitMin:52, transitFare:3.25, transitMode:"Metro → Link → walk",  carMin:30, carMilesRound:24 },
+    "Seattle Children's Hospital":{ transitMin:58,transitFare:3.25, transitMode:"Metro → Link → bus",   carMin:32, carMilesRound:26 },
+    "Google":                    { transitMin:52, transitFare:3.25, transitMode:"Metro → Link → walk",  carMin:30, carMilesRound:24 },
+    "Allied Universal":          { transitMin:15, transitFare:2.75, transitMode:"Bus",                   carMin:10, carMilesRound:6  },
+    "EvergreenHealth":           { transitMin:35, transitFare:3.00, transitMode:"Metro bus",             carMin:20, carMilesRound:16 },
+    "Blue Origin":               { transitMin:20, transitFare:2.75, transitMode:"Metro bus",             carMin:12, carMilesRound:10 },
+    "Albertsons":                { transitMin:6,  transitFare:2.75, transitMode:"Walk (Renton Highlands)",carMin:5, carMilesRound:2  },
+    "MultiCare (Tacoma)":        { transitMin:60, transitFare:3.75, transitMode:"Bus → Sounder",         carMin:38, carMilesRound:36 },
+    "Marriott International":    { transitMin:30, transitFare:3.00, transitMode:"Metro → Link",          carMin:18, carMilesRound:14 },
+    "Quality Food Centers (QFC)":{ transitMin:10, transitFare:2.75, transitMode:"Bus",                   carMin:7,  carMilesRound:4  },
+  },
+};
+
+// Build employers array for each site from the matrix
+ALL_SITES.forEach(site => {
+  const matrix = COMMUTE_MATRIX[site.id] || {};
+  site.employers = EMPLOYER_DEFS.map(def => {
+    const commute = matrix[def.name];
+    if (!commute) return null;
+    return { name: def.name, area: def.area, ...commute };
+  }).filter(Boolean);
+});
+
+// ── King County Top 20 Employers — multi-location map pins ───────────────
+const EMPLOYERS = [
+  {name:"Amazon", location:"HQ — South Lake Union", postings:10050, lat:47.6223, lng:-122.3362},
+  {name:"Amazon", location:"Fulfillment Center — SeaTac", postings:null, lat:47.4625, lng:-122.2971},
+  {name:"Boeing", location:"Renton Plant (737)", postings:1061, lat:47.5004, lng:-122.2173},
+  {name:"Boeing", location:"Everett Plant (787/777)", postings:null, lat:47.9232, lng:-122.2632},
+  {name:"Boeing", location:"Auburn Manufacturing", postings:null, lat:47.3073, lng:-122.2284},
+  {name:"Microsoft", location:"Redmond Campus (HQ)", postings:1114, lat:47.6422, lng:-122.1301},
+  {name:"Microsoft", location:"Bellevue Office", postings:null, lat:47.6158, lng:-122.1999},
+  {name:"Providence", location:"Providence Seattle Medical Center", postings:1381, lat:47.6069, lng:-122.3142},
+  {name:"Providence", location:"Providence Everett Medical Center", postings:null, lat:47.9712, lng:-122.2015},
+  {name:"Providence", location:"Providence Renton", postings:null, lat:47.4779, lng:-122.2168},
+  {name:"Swedish Health Services", location:"First Hill Campus", postings:1241, lat:47.6069, lng:-122.3196},
+  {name:"Swedish Health Services", location:"Cherry Hill Campus", postings:null, lat:47.6097, lng:-122.3087},
+  {name:"Swedish Health Services", location:"Edmonds Campus", postings:null, lat:47.8118, lng:-122.3479},
+  {name:"Apple", location:"Bellevue Office", postings:885, lat:47.6158, lng:-122.1999},
+  {name:"Apple", location:"South Lake Union Office", postings:null, lat:47.6255, lng:-122.3390},
+  {name:"Kroger (QFC/Fred Meyer)", location:"QFC — Capitol Hill", postings:820, lat:47.6225, lng:-122.3208},
+  {name:"Kroger (QFC/Fred Meyer)", location:"Fred Meyer — Rainier Ave", postings:null, lat:47.5533, lng:-122.2793},
+  {name:"Kroger (QFC/Fred Meyer)", location:"Fred Meyer — Everett", postings:null, lat:47.9584, lng:-122.2012},
+  {name:"Kroger (QFC/Fred Meyer)", location:"QFC — Renton", postings:null, lat:47.4811, lng:-122.2168},
+  {name:"King County Admin", location:"Administration Building — Downtown Seattle", postings:749, lat:47.6035, lng:-122.3300},
+  {name:"Turing", location:"Downtown Seattle", postings:747, lat:47.6101, lng:-122.3331},
+  {name:"University of Washington", location:"Seattle Campus (main)", postings:745, lat:47.6553, lng:-122.3035},
+  {name:"University of Washington", location:"UW Medicine — Montlake", postings:null, lat:47.6498, lng:-122.3082},
+  {name:"University of Washington", location:"UW Bothell Campus", postings:null, lat:47.7596, lng:-122.1143},
+  {name:"Fred Hutchinson Cancer Ctr", location:"South Lake Union", postings:691, lat:47.6242, lng:-122.3353},
+  {name:"Seattle Children's Hospital", location:"Laurelhurst Campus", postings:657, lat:47.6631, lng:-122.3033},
+  {name:"Google", location:"South Lake Union", postings:639, lat:47.6255, lng:-122.3390},
+  {name:"Google", location:"Kirkland Campus", postings:null, lat:47.6814, lng:-122.1994},
+  {name:"Allied Universal", location:"Seattle Operations Hub", postings:577, lat:47.6035, lng:-122.3300},
+  {name:"Allied Universal", location:"SeaTac Airport", postings:null, lat:47.4490, lng:-122.3088},
+  {name:"EvergreenHealth", location:"Kirkland Medical Center", postings:429, lat:47.7001, lng:-122.2018},
+  {name:"EvergreenHealth", location:"Monroe Medical Center", postings:null, lat:47.8554, lng:-121.9718},
+  {name:"Blue Origin", location:"Kent Headquarters", postings:357, lat:47.5468, lng:-122.3107},
+  {name:"Albertsons", location:"Beacon Hill", postings:341, lat:47.5680, lng:-122.3080},
+  {name:"Albertsons", location:"Rainier Valley", postings:null, lat:47.5354, lng:-122.2801},
+  {name:"Albertsons", location:"Federal Way", postings:null, lat:47.3230, lng:-122.3128},
+  {name:"Albertsons", location:"Everett", postings:null, lat:47.9601, lng:-122.2101},
+  {name:"Albertsons", location:"Kent", postings:null, lat:47.3809, lng:-122.2348},
+  {name:"MultiCare (Tacoma)", location:"Tacoma General Hospital", postings:339, lat:47.2490, lng:-122.4443},
+  {name:"MultiCare (Tacoma)", location:"Auburn Medical Center", postings:null, lat:47.3073, lng:-122.2284},
+  {name:"MultiCare (Tacoma)", location:"Covington Medical Center", postings:null, lat:47.3595, lng:-122.1082},
+  {name:"Marriott International", location:"Marriott — Downtown Seattle", postings:317, lat:47.6121, lng:-122.3369},
+  {name:"Marriott International", location:"Marriott — SeaTac Airport", postings:null, lat:47.4490, lng:-122.2971},
+  {name:"Marriott International", location:"Marriott — Bellevue", postings:null, lat:47.6158, lng:-122.2003},
+  {name:"Quality Food Centers (QFC)", location:"QFC — University Village", postings:371, lat:47.6620, lng:-122.3040},
+  {name:"Quality Food Centers (QFC)", location:"QFC — Bellevue", postings:null, lat:47.6101, lng:-122.1980},
+  {name:"Quality Food Centers (QFC)", location:"QFC — Renton", postings:null, lat:47.4811, lng:-122.2060},
+];
+
+const CAR_CPM = 0.67;
+function carCost(miles){ return (miles * CAR_CPM + 25).toFixed(2); }
+function transitCost(fare){ return (fare * 2).toFixed(2); }
+
+const map = L.map('map').setView([47.58, -122.24], 10);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 18
+}).addTo(map);
+
+const todIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:20px;height:20px;background:#1D9E75;border:2.5px solid #085041;border-radius:50%;cursor:pointer;box-shadow:0 0 0 5px rgba(29,158,117,0.18)"></div>',
+  iconAnchor: [10,10]
+});
+const suburbanIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:20px;height:20px;background:#8B5CF6;border:2.5px solid #5B21B6;border-radius:50%;cursor:pointer;box-shadow:0 0 0 5px rgba(139,92,246,0.18)"></div>',
+  iconAnchor: [10,10]
+});
+const empIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:14px;height:14px;background:#D85A30;border:2px solid #712B13;border-radius:50%;"></div>',
+  iconAnchor: [7,7]
+});
+
+EMPLOYERS.forEach(e => {
+  const postingLine = e.postings ? `<br><span style="font-size:11px;color:#555">${e.postings.toLocaleString()} job postings (Apr 2026)</span>` : '';
+  L.marker([e.lat, e.lng], {icon: empIcon}).addTo(map)
+    .bindTooltip(`<strong>${e.name}</strong><br><span style="font-size:11px;color:#888">${e.location}</span>${postingLine}`, {direction:'top'});
+});
+
+let currentArea = null;
+let showingAll = false;
+
+ALL_SITES.forEach(area => {
+  const icon = area.kind === 'tod' ? todIcon : suburbanIcon;
+  const tagColor = area.kind === 'tod' ? '#085041' : '#5B21B6';
+  L.marker([area.lat, area.lng], {icon}).addTo(map)
+    .bindTooltip(`<strong>${area.name}</strong><br><span style="font-size:11px;color:${tagColor}">${area.kind === 'tod' ? 'ST TOD · ' : 'Suburban · '}${area.region}</span>`, {direction:'top'})
+    .on('click', () => { currentArea = area; showingAll = false; showPanel(area, false); });
+});
+
+function buildRows(area, showAll) {
+  const sorted = [...area.employers].sort((a, b) => a.carMin - b.carMin);
+  const list = showAll ? sorted : sorted.slice(0, 5);
+  return list.map(e => {
+    const tFare = parseFloat(transitCost(e.transitFare));
+    const cCost = parseFloat(carCost(e.carMilesRound));
+    const savings = (cCost - tFare).toFixed(2);
+    const timeDiff = e.transitMin - e.carMin;
+    const costPill = savings > 0
+      ? `<div class="pill pill-green">save $${savings}/day</div>`
+      : `<div class="pill pill-red">$${Math.abs(savings)} more/day</div>`;
+    const timePill = timeDiff > 0
+      ? `<div class="pill pill-red">+${timeDiff} min vs car</div>`
+      : timeDiff < 0
+        ? `<div class="pill pill-green">${Math.abs(timeDiff)} min faster</div>`
+        : `<div class="pill pill-green">same time</div>`;
+    return `<div class="employer-row">
+      <div>
+        <div class="employer-name">${e.name}</div>
+        <div class="employer-area">${e.area}</div>
+        <div class="employer-mode">${e.transitMode}</div>
+      </div>
+      <div class="metric-cell">
+        <div class="metric-label">Transit</div>
+        <div class="metric-time transit-time">${e.transitMin} min</div>
+        <div class="metric-cost">$${tFare}/day</div>
+        ${costPill}
+      </div>
+      <div class="metric-cell">
+        <div class="metric-label">Car</div>
+        <div class="metric-time car-time">${e.carMin} min</div>
+        <div class="metric-cost">$${cCost}/day</div>
+        ${timePill}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function showPanel(area, showAll) {
+  const isTod = area.kind === 'tod';
+  const badgeBg = isTod ? '#E1F5EE' : '#EDE9FE';
+  const badgeColor = isTod ? '#085041' : '#5B21B6';
+  const total = area.employers.length;
+  const showing = showAll ? total : Math.min(5, total);
+  const rows = buildRows(area, showAll);
+  const toggleBtn = total > 5
+    ? `<button class="show-more-btn" onclick="toggleEmployers()">${showAll ? '▲ Show fewer employers' : `▼ Show all ${total} employers`}</button>`
+    : '';
+  const linkHtml = area.url
+    ? `<div style="margin-bottom:10px;"><a href="${area.url}" target="_blank" style="font-size:12px;color:#2563eb;text-decoration:none;">→ View on Sound Transit website</a></div>`
+    : '';
+  document.getElementById('sidebar-inner').innerHTML = `
+    <div class="area-title">${area.name}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+      <span class="area-badge" style="background:${badgeBg};color:${badgeColor}">${isTod ? 'Completed ST TOD' : 'Suburban Neighborhood'}</span>
+      <span class="area-badge" style="background:#f3f4f6;color:#374151">${area.region}</span>
+    </div>
+    <div class="area-desc">${area.desc}</div>
+    ${linkHtml}
+    <div class="col-headers">
+      <div class="col-header">Employer (${showing} of ${total})</div>
+      <div class="col-header">Transit</div>
+      <div class="col-header">Car (IRS + parking)</div>
+    </div>
+    ${rows}
+    ${toggleBtn}
+  `;
+}
+
+function toggleEmployers() {
+  if (!currentArea) return;
+  showingAll = !showingAll;
+  showPanel(currentArea, showingAll);
+}
+</script>
+</body>
+</html>
