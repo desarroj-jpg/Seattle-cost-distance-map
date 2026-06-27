@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>20/4/10 Car Affordability Calculator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff;
+    --surface: #f5f5f3;
+    --border: #e0dfd8;
+    --border-strong: #c8c7c0;
+    --text-primary: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --text-muted: #9a9890;
+    --radius: 8px;
+    --green-bg: #eaf3de;
+    --green-border: #3b6d11;
+    --green-text: #3b6d11;
+    --amber-bg: #faeeda;
+    --amber-border: #854f0b;
+    --amber-text: #854f0b;
+    --accent: #185fa5;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    padding: 2rem 1.5rem;
+    max-width: 640px;
+    margin: 0 auto;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+  }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 1.75rem;
+  }
+
+  .mode-toggle {
+    display: flex;
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 1.5rem;
+  }
+
+  .mode-btn {
+    flex: 1;
+    padding: 10px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-secondary);
+    transition: background 0.15s, color 0.15s;
+    font-family: inherit;
+  }
+
+  .mode-btn.active {
+    background: var(--surface);
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .input-group { margin-bottom: 1.25rem; }
+
+  .input-group label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+
+  .input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .prefix {
+    font-size: 15px;
+    color: var(--text-muted);
+  }
+
+  .input-row input {
+    flex: 1;
+    height: 36px;
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 0 10px;
+    font-size: 15px;
+    font-family: inherit;
+    color: var(--text-primary);
+    background: var(--bg);
+    outline: none;
+  }
+
+  .input-row input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(24,95,165,0.12);
+  }
+
+  .divider {
+    height: 0.5px;
+    background: var(--border);
+    margin: 1.25rem 0;
+  }
+
+  .rate-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+
+  .rate-row input[type=range] {
+    flex: 1;
+    accent-color: var(--accent);
+  }
+
+  .rate-val {
+    min-width: 38px;
+    font-weight: 500;
+    color: var(--text-primary);
+    font-size: 13px;
+  }
+
+  .result-card {
+    background: var(--surface);
+    border-radius: 12px;
+    border: 0.5px solid var(--border);
+    padding: 1.25rem 1.5rem;
+    margin: 1.5rem 0 0;
+  }
+
+  .result-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+
+  .result-value {
+    font-size: 28px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .breakdown {
+    margin-top: 1.25rem;
+    border-top: 0.5px solid var(--border);
+    padding-top: 1rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .breakdown-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 2px;
+  }
+
+  .breakdown-value {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+
+  .transport-note {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 400;
+    margin-top: 2px;
+  }
+
+  .verdict {
+    margin-top: 1rem;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    border: 0.5px solid;
+    line-height: 1.5;
+  }
+
+  .verdict.ok {
+    background: var(--green-bg);
+    border-color: var(--green-border);
+    color: var(--green-text);
+  }
+
+  .verdict.warn {
+    background: var(--amber-bg);
+    border-color: var(--amber-border);
+    color: var(--amber-text);
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .export-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border: 0.5px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: transparent;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+
+  .export-btn:hover {
+    background: var(--surface);
+    color: var(--text-primary);
+  }
+
+  .placeholder {
+    padding: 1rem 0;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
+  .rule-note {
+    margin-top: 2rem;
+    font-size: 12px;
+    color: var(--text-muted);
+    border-top: 0.5px solid var(--border);
+    padding-top: 1rem;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<h1>20/4/10 car affordability calculator</h1>
+<p class="subtitle">20% down &nbsp;·&nbsp; 4-year loan &nbsp;·&nbsp; total transport ≤ 10% of gross monthly income</p>
+
+<div class="mode-toggle" role="group" aria-label="Calculation mode">
+  <button class="mode-btn active" id="btn-income" onclick="setMode('income')">Based on income</button>
+  <button class="mode-btn" id="btn-car" onclick="setMode('car')">Based on car price</button>
+</div>
+
+<div id="panel-income">
+  <div class="input-group">
+    <label for="gross-income">Annual household gross income</label>
+    <div class="input-row">
+      <span class="prefix">$</span>
+      <input type="number" id="gross-income" placeholder="e.g. 85000" min="0" oninput="calc()" />
+    </div>
+  </div>
+</div>
+
+<div id="panel-car" style="display:none">
+  <div class="input-group">
+    <label for="car-price">Car price</label>
+    <div class="input-row">
+      <span class="prefix">$</span>
+      <input type="number" id="car-price" placeholder="e.g. 48841" min="0" oninput="calc()" />
+    </div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<div class="rate-row">
+  <span>APR estimate</span>
+  <input type="range" min="3" max="15" step="0.5" value="7.5" id="apr-slider"
+    oninput="document.getElementById('apr-display').textContent=parseFloat(this.value).toFixed(1)+'%'; calc()" />
+  <span class="rate-val" id="apr-display">7.5%</span>
+</div>
+
+<div class="divider"></div>
+
+<div id="result-area" style="display:none">
+  <div class="result-card">
+    <div id="main-label" class="result-label"></div>
+    <div id="main-value" class="result-value"></div>
+    <div class="breakdown" id="breakdown"></div>
+  </div>
+  <div class="verdict" id="verdict"></div>
+  <div class="actions">
+    <button class="export-btn" onclick="exportCSV()">&#x2193; Export as CSV</button>
+  </div>
+</div>
+
+<div class="placeholder" id="placeholder">Enter a value above to see your results.</div>
+
+<p class="rule-note">
+  <strong>About the 20/4/10 rule:</strong> Put at least 20% down, finance for no more than 4 years, and keep all monthly transportation costs (loan payment + insurance + fuel + maintenance) at or below 10% of gross monthly income. AAA ownership cost estimate of $479/mo covers insurance, fuel, maintenance, and registration.
+</p>
+
+<script>
+  let mode = 'income';
+  let lastResult = null;
+
+  function setMode(m) {
+    mode = m;
+    document.getElementById('panel-income').style.display = m === 'income' ? 'block' : 'none';
+    document.getElementById('panel-car').style.display = m === 'car' ? 'block' : 'none';
+    document.getElementById('btn-income').classList.toggle('active', m === 'income');
+    document.getElementById('btn-car').classList.toggle('active', m === 'car');
+    calc();
+  }
+
+  function fmt(n) { return '$' + Math.round(n).toLocaleString(); }
+
+  function calcPayment(principal, apr, months) {
+    const r = (apr / 100) / 12;
+    if (r === 0) return principal / months;
+    return principal * r / (1 - Math.pow(1 + r, -months));
+  }
+
+  const OTHER = 479;
+
+  function calc() {
+    const apr = parseFloat(document.getElementById('apr-slider').value);
+    const months = 48;
+    const raw = mode === 'income'
+      ? document.getElementById('gross-income').value
+      : document.getElementById('car-price').value;
+    const inputVal = parseFloat(raw);
+
+    if (!inputVal || inputVal <= 0) {
+      document.getElementById('result-area').style.display = 'none';
+      document.getElementById('placeholder').style.display = 'block';
+      lastResult = null;
+      return;
+    }
+
+    document.getElementById('result-area').style.display = 'block';
+    document.getElementById('placeholder').style.display = 'none';
+
+    let carPrice, grossIncome, downPayment, loanAmt, monthlyPayment, maxTransport;
+
+    if (mode === 'income') {
+      grossIncome = inputVal;
+      maxTransport = (grossIncome / 12) * 0.10;
+      monthlyPayment = maxTransport - OTHER;
+
+      if (monthlyPayment <= 0) {
+        document.getElementById('main-label').textContent = 'Maximum affordable car price';
+        document.getElementById('main-value').textContent = '$0';
+        document.getElementById('breakdown').innerHTML =
+          '<div><div class="breakdown-label">Max monthly transport (10%)</div><div class="breakdown-value">' + fmt(maxTransport) + '/mo</div></div>' +
+          '<div><div class="breakdown-label">AAA ownership costs</div><div class="breakdown-value">' + fmt(OTHER) + '/mo</div></div>';
+        const v = document.getElementById('verdict');
+        v.className = 'verdict warn';
+        v.textContent = 'At this income, estimated ownership costs (insurance, fuel, maintenance) already exceed the 10% cap — no loan payment is possible under this rule.';
+        lastResult = null;
+        return;
+      }
+
+      const r = (apr / 100) / 12;
+      const loanAffordable = r === 0 ? monthlyPayment * months : monthlyPayment * (1 - Math.pow(1 + r, -months)) / r;
+      carPrice = loanAffordable / 0.80;
+      downPayment = carPrice * 0.20;
+      loanAmt = carPrice - downPayment;
+
+      document.getElementById('main-label').textContent = 'Maximum affordable car price';
+      document.getElementById('main-value').textContent = fmt(carPrice);
+      document.getElementById('breakdown').innerHTML =
+        '<div><div class="breakdown-label">Down payment (20%)</div><div class="breakdown-value">' + fmt(downPayment) + '</div></div>' +
+        '<div><div class="breakdown-label">Loan amount</div><div class="breakdown-value">' + fmt(loanAmt) + '</div></div>' +
+        '<div><div class="breakdown-label">Monthly loan payment</div><div class="breakdown-value">' + fmt(monthlyPayment) + '/mo</div></div>' +
+        '<div><div class="breakdown-label">Total monthly transport</div><div class="breakdown-value">' + fmt(maxTransport) + '/mo<div class="transport-note">loan + AAA ownership costs</div></div></div>';
+
+      document.getElementById('verdict').className = 'verdict ok';
+      document.getElementById('verdict').textContent = 'With a ' + fmt(downPayment) + ' down payment and ' + fmt(monthlyPayment) + '/mo loan payment, you stay within the 10% transport cap.';
+      lastResult = { mode, grossIncome, carPrice, downPayment, loanAmt, monthlyPayment, maxTransport, apr };
+
+    } else {
+      carPrice = inputVal;
+      downPayment = carPrice * 0.20;
+      loanAmt = carPrice - downPayment;
+      monthlyPayment = calcPayment(loanAmt, apr, months);
+      maxTransport = monthlyPayment + OTHER;
+      grossIncome = maxTransport * 12 / 0.10;
+
+      document.getElementById('main-label').textContent = 'Minimum required annual income';
+      document.getElementById('main-value').textContent = fmt(grossIncome);
+      document.getElementById('breakdown').innerHTML =
+        '<div><div class="breakdown-label">Down payment (20%)</div><div class="breakdown-value">' + fmt(downPayment) + '</div></div>' +
+        '<div><div class="breakdown-label">Loan amount</div><div class="breakdown-value">' + fmt(loanAmt) + '</div></div>' +
+        '<div><div class="breakdown-label">Monthly loan payment</div><div class="breakdown-value">' + fmt(monthlyPayment) + '/mo</div></div>' +
+        '<div><div class="breakdown-label">Total monthly transport</div><div class="breakdown-value">' + fmt(maxTransport) + '/mo<div class="transport-note">loan + AAA ownership costs</div></div></div>';
+
+      document.getElementById('verdict').className = 'verdict ok';
+      document.getElementById('verdict').textContent = 'AAA ownership costs estimated at ' + fmt(OTHER) + '/mo. Loan payment is ' + fmt(monthlyPayment) + '/mo over 48 months at ' + parseFloat(apr).toFixed(1) + '% APR.';
+      lastResult = { mode, grossIncome, carPrice, downPayment, loanAmt, monthlyPayment, maxTransport, apr };
+    }
+  }
+
+  function exportCSV() {
+    if (!lastResult) return;
+    const r = lastResult;
+    const round = n => Math.round(n);
+    const rows = [
+      ['20/4/10 Car Affordability Calculator'],
+      [''],
+      ['Setting', 'Value'],
+      ['Mode', r.mode === 'income' ? 'Based on income' : 'Based on car price'],
+      ['APR', r.apr + '%'],
+      ['Loan term', '48 months'],
+      ['Down payment requirement', '20%'],
+      [''],
+      ['Results', ''],
+      ['Car price', '$' + round(r.carPrice)],
+      ['Required annual income', '$' + round(r.grossIncome)],
+      ['Down payment (20%)', '$' + round(r.downPayment)],
+      ['Loan amount', '$' + round(r.loanAmt)],
+      ['Monthly loan payment', '$' + round(r.monthlyPayment)],
+      ['AAA monthly ownership costs', '$479'],
+      ['Total monthly transport (loan + AAA)', '$' + round(r.maxTransport)],
+      [''],
+      ['Note', 'AAA ownership costs include insurance, fuel, maintenance, and registration.'],
+      ['Rule', '20% down / 4-year loan / total transport at or below 10% of gross monthly income.'],
+    ];
+    const csv = rows.map(row => row.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = '20-4-10-calculator.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+</script>
+</body>
+</html>
